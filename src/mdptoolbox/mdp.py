@@ -265,7 +265,7 @@ class MDP(object):
         # Get the policy and value, for now it is being returned but...
         # Which way is better?
         # 1. Return, (policy, value)
-        return (Q.argmax(axis=0), Q.max(axis=0))
+        return (Q.argmax(axis=0), Q.max(axis=0), Q)
         # 2. update self.policy and self.V directly
         # self.V = Q.max(axis=1)
         # self.policy = Q.argmax(axis=1)
@@ -438,7 +438,7 @@ class FiniteHorizon(MDP):
         self.time = _time.time()
         # loop through each time period
         for n in range(self.N):
-            W, X = self._bellmanOperator(self.V[:, self.N - n])
+            W, X, null = self._bellmanOperator(self.V[:, self.N - n])
             stage = self.N - n - 1
             self.V[:, stage] = X
             self.policy[:, stage] = W
@@ -547,7 +547,7 @@ class _LP(MDP):
         # only to 10e-8 places. This assumes glpk is installed of course.
         self.V = _np.array(self._linprog(f, M, -h)['x']).reshape(self.S)
         # apply the Bellman operator
-        self.policy, self.V = self._bellmanOperator()
+        self.policy, self.V, self.Q = self._bellmanOperator()
         # update the time spent solving
         self.time = _time.time() - self.time
         # store value and policy as tuples
@@ -629,7 +629,7 @@ class PolicyIteration(MDP):
             # Initialise the policy to the one which maximises the expected
             # immediate reward
             null = _np.zeros(self.S)
-            self.policy, null = self._bellmanOperator(null)
+            self.policy, null, self.Q = self._bellmanOperator(null)
             del null
         else:
             # Use the policy that the user supplied
@@ -648,6 +648,7 @@ class PolicyIteration(MDP):
             self.policy = policy0
         # set the initial values to zero
         self.V = _np.zeros(self.S)
+        self.Q = _np.zeros((self.A, self.S))
         # Do some setup depending on the evaluation type
         if eval_type in (0, "matrix"):
             self.eval_type = "matrix"
@@ -812,7 +813,7 @@ class PolicyIteration(MDP):
                 self._evalPolicyIterative()
             # This should update the classes policy attribute but leave the
             # value alone
-            policy_next, null = self._bellmanOperator()
+            policy_next, null, self.Q = self._bellmanOperator()
             del null
             # calculate in how many places does the old policy disagree with
             # the new policy
@@ -925,7 +926,7 @@ class PolicyIterationModified(PolicyIteration):
         while True:
             self.iter += 1
 
-            self.policy, Vnext = self._bellmanOperator()
+            self.policy, Vnext, null = self._bellmanOperator()
             # [Ppolicy, PRpolicy] = mdp_computePpolicyPRpolicy(P, PR, policy);
 
             variation = _util.getSpan(Vnext - self.V)
@@ -1205,7 +1206,7 @@ class RelativeValueIteration(MDP):
 
             self.iter += 1
 
-            self.policy, Vnext = self._bellmanOperator()
+            self.policy, Vnext, null = self._bellmanOperator()
             Vnext = Vnext - self.gain
 
             variation = _util.getSpan(Vnext - self.V)
@@ -1409,13 +1410,12 @@ class ValueIteration(MDP):
 
         k = 1 - h.sum()
         Vprev = self.V
-        null, value = self._bellmanOperator()
+        null, value, null = self._bellmanOperator()
         # p 201, Proposition 6.6.5
         span = _util.getSpan(value - Vprev)
         max_iter = (_math.log((epsilon * (1 - self.discount) / self.discount) /
                     span) / _math.log(self.discount * k))
         # self.V = Vprev
-
         self.max_iter = int(_math.ceil(max_iter))
 
     def run(self):
@@ -1428,7 +1428,7 @@ class ValueIteration(MDP):
             Vprev = self.V.copy()
 
             # Bellman Operator: compute policy and value functions
-            self.policy, self.V = self._bellmanOperator()
+            self.policy, self.V, self.Q = self._bellmanOperator()
 
             # The values, based on Q. For the function "max()": the option
             # "axis" means the axis along which to operate. In this case it
